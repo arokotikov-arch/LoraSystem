@@ -2,3 +2,9 @@
 __pycache__/
 *.pyc
 .env
+
+# Runtime workspace data (images, captions, training output, logs)
+/workspace/images/
+/workspace/captions/
+/workspace/output/
+/workspace/logs/
