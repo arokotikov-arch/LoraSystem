@@ -38,7 +38,9 @@
 Если лицо «пережарено» или всё стало похоже на тренировочные фото — снизьте steps до 900–1200 либо rank до 8. Если не узнаётся — попробуйте 1600–2000 steps. Не ставьте 768px на 8 GB без дополнительной оптимизации.
 
 ## Использование LoRA
-Итог — файл `.safetensors` в `workspace/output/<имя>`. Подключите его в AUTOMATIC1111/ComfyUI. В prompt используйте trigger-word, например `portrait photo of skswoman`; начальный вес LoRA: `0.7–0.9`.
+Итог — файл `pytorch_lora_weights.safetensors` в `workspace/output/<имя>/`. Переименуйте его как удобно (например, `my_char.safetensors`) и положите в `models/Lora` вашего webUI (AUTOMATIC1111 / ComfyUI / Forge). В prompt используйте trigger-word, например `portrait photo of skswoman`; начальный вес LoRA: `0.7–0.9`.
+
+**Для v-prediction моделей (YiffyMix v4x и т.п.).** База и LoRA должны быть одной архитектуры: обучали на v44 — и генерируйте на v44. В webUI рядом с базовым чекпоинтом положите его v-pred конфиг `.yaml` (тем же именем, с `parameterization: "v"`) — иначе изображения выйдут шумом. Сама LoRA ставится как обычно и вызывается через `<lora:имя:вес>`.
 
 ## Важно
 - Базовая модель должна быть **Diffusers-папкой** (с `model_index.json`), а не одиночным `.ckpt`/`.safetensors` checkpoint.
