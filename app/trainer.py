@@ -12,7 +12,54 @@ _process: subprocess.Popen | None = None
 _lock = threading.Lock()
 
 CONFIG_FILE = ROOT / 'config' / 'last_run.json'
-SAVE_KEYS = ('model_path','output_name','resolution','batch','accum','rank','lr','steps','seed','vpred')
+SAVE_KEYS = (
+    'model_path','output_name','resolution','batch','accum','rank','lr','steps','seed','vpred',
+    'lr_scheduler','lr_warmup','max_grad_norm','optimizer','snr_gamma','noise_offset',
+    'target_modules','tf32','xformers','random_flip','center_crop',
+)
+
+# Значения по умолчанию для формы обучения. Подобраны так, чтобы полностью
+# повторять текущее поведение скрипта (ничего не меняется, пока пользователь
+# не тронет расширенные настройки).
+FORM_DEFAULTS = {
+    'lr_scheduler': 'constant',
+    'lr_warmup': 0,
+    'max_grad_norm': 1.0,
+    'optimizer': 'adamw',
+    'snr_gamma': 0.0,
+    'noise_offset': 0.0,
+    'target_modules': 'standard',
+    'tf32': False,
+    'xformers': False,
+    'random_flip': False,
+    'center_crop': False,
+}
+
+# Наборы модулей UNet SD 1.5, на которые вешается LoRA.
+# 'standard' — дефолт diffusers (только проекции внимания), слабее учится.
+# 'extended'  — добавляет proj_in/proj_out (Kohya-style), сильнее связывает персонажа.
+TARGET_MODULES = {
+    'standard': 'to_q,to_k,to_v,to_out.0',
+    'extended': 'to_q,to_k,to_v,to_out.0,proj_in,proj_out',
+}
+
+
+def form_defaults() -> dict:
+    return dict(FORM_DEFAULTS)
+
+
+def _target_modules_str(key: str) -> str:
+    return TARGET_MODULES.get(str(key), TARGET_MODULES['standard'])
+
+
+def _can_import(module: str) -> bool:
+    import importlib
+    try:
+        importlib.import_module(module)
+        return True
+    except Exception:
+        return False
+
 
 def load_config() -> dict:
     """Последние использованные настройки формы обучения (для автозаполнения при старте UI)."""
@@ -136,6 +183,30 @@ def start(cfg):
         log=LOGS/f'{name}_{datetime.now():%Y%m%d_%H%M%S}.log'
         cmd=[sys.executable, str(script), '--pretrained_model_name_or_path',str(model), '--train_data_dir',str(IMAGES), '--caption_column','text', '--resolution',str(int(cfg['resolution'])), '--train_batch_size',str(int(cfg['batch'])), '--gradient_accumulation_steps',str(int(cfg['accum'])), '--learning_rate',str(float(cfg['lr'])), '--max_train_steps',str(int(cfg['steps'])), '--rank',str(int(cfg['rank'])), '--output_dir',str(runout), '--mixed_precision','fp16', '--gradient_checkpointing', '--seed',str(int(cfg['seed'])), '--checkpointing_steps','500', '--checkpoints_total_limit','2']
         if pred=='v_prediction': cmd+=['--prediction_type','v_prediction']
+        # --- расширенные настройки (значения по умолчанию повторяют прежнее поведение) ---
+        # Оптимизатор: 8-bit Adam экономит VRAM и позволяет поднять rank на 8 GB.
+        if str(cfg.get('optimizer','adamw'))=='adamw8bit':
+            if not _can_import('bitsandbytes'):
+                return 'Ошибка: выбран 8-bit Adam, но bitsandbytes не установлен. Установите: pip install -U bitsandbytes — либо выберите обычный AdamW.'
+            cmd+=['--use_8bit_adam']
+        if cfg.get('xformers'):
+            if not _can_import('xformers'):
+                return 'Ошибка: выбран xFormers, но он не установлен. xFormers нужно ставить под вашу версию torch (см. requirements-extras.txt) — либо выключите xFormers.'
+            cmd+=['--enable_xformers_memory_efficient_attention']
+        if cfg.get('tf32'): cmd+=['--allow_tf32']
+        if cfg.get('random_flip'): cmd+=['--random_flip']
+        if cfg.get('center_crop'): cmd+=['--center_crop']
+        # Расписание LR и warmup. plain 'constant' игнорирует warmup.
+        cmd+=['--lr_scheduler', str(cfg.get('lr_scheduler','constant')), '--lr_warmup_steps', str(int(cfg.get('lr_warmup',0) or 0))]
+        # Min-SNR gamma — балансировка потерь, заметно помогает сходимости на v-prediction (рекомендация 5.0).
+        snr=float(cfg.get('snr_gamma',0.0) or 0.0)
+        if snr>0: cmd+=['--snr_gamma', str(snr)]
+        # Noise offset — улучшает контраст/освещение (рекомендация 0.05–0.1).
+        noise=float(cfg.get('noise_offset',0.0) or 0.0)
+        if noise>0: cmd+=['--noise_offset', str(noise)]
+        cmd+=['--max_grad_norm', str(float(cfg.get('max_grad_norm',1.0) or 1.0))]
+        # Target modules: standard (дефолт) или extended (Kohya-style, сильнее).
+        cmd+=['--lora_target_modules', _target_modules_str(cfg.get('target_modules','standard'))]
         env=os.environ.copy()
         fh=open(log,'w',encoding='utf-8',buffering=1)
         _process=subprocess.Popen(cmd,stdout=fh,stderr=subprocess.STDOUT,cwd=str(ROOT),env=env)

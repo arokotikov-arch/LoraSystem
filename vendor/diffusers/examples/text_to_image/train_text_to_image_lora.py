@@ -418,6 +418,17 @@ def parse_args():
         default=4,
         help=("The dimension of the LoRA update matrices."),
     )
+    parser.add_argument(
+        "--lora_target_modules",
+        type=str,
+        default="to_q,to_k,to_v,to_out.0",
+        help=(
+            "Comma-separated LoRA target modules. Default 'to_q,to_k,to_v,to_out.0'"
+            " (the diffusers default, only the attention projections). For a stronger,"
+            " Kohya-style LoRA add the resampler projections:"
+            " 'to_q,to_k,to_v,to_out.0,proj_in,proj_out'."
+        ),
+    )
 
     args = parser.parse_args()
     env_local_rank = int(os.environ.get("LOCAL_RANK", -1))
@@ -523,7 +534,7 @@ def main():
         r=args.rank,
         lora_alpha=args.rank,
         init_lora_weights="gaussian",
-        target_modules=["to_k", "to_q", "to_v", "to_out.0"],
+        target_modules=[m.strip() for m in args.lora_target_modules.split(",") if m.strip()],
     )
 
     # Move unet, vae and text_encoder to device and cast to weight_dtype
