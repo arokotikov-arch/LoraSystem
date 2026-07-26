@@ -8,3 +8,6 @@ __pycache__/
 /workspace/captions/
 /workspace/output/
 /workspace/logs/
+
+# Сохранённые пользователем настройки формы обучения
+/config/last_run.json

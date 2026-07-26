@@ -11,6 +11,24 @@ for p in (IMAGES, CAPS, OUT, LOGS): p.mkdir(parents=True, exist_ok=True)
 _process: subprocess.Popen | None = None
 _lock = threading.Lock()
 
+CONFIG_FILE = ROOT / 'config' / 'last_run.json'
+SAVE_KEYS = ('model_path','output_name','resolution','batch','accum','rank','lr','steps','seed','vpred')
+
+def load_config() -> dict:
+    """Последние использованные настройки формы обучения (для автозаполнения при старте UI)."""
+    try:
+        if CONFIG_FILE.exists():
+            return json.loads(CONFIG_FILE.read_text(encoding='utf-8'))
+    except Exception:
+        pass
+    return {}
+
+def save_config(cfg: dict) -> str:
+    CONFIG_FILE.parent.mkdir(parents=True, exist_ok=True)
+    data = {k: cfg[k] for k in SAVE_KEYS if k in cfg}
+    CONFIG_FILE.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding='utf-8')
+    return 'Настройки сохранены (config/last_run.json).'
+
 def image_files(): return sorted([p for p in IMAGES.iterdir() if p.suffix.lower() in {'.jpg','.jpeg','.png','.webp'}])
 
 def import_files(files):
@@ -104,6 +122,7 @@ def start(cfg):
     global _process
     with _lock:
         if _process and _process.poll() is None: return 'Обучение уже запущено.'
+        save_config(cfg)  # запомнить настройки формы для следующих запусков
         model=Path(cfg['model_path']).expanduser()
         if not (model/'model_index.json').exists(): return 'Ошибка: путь к модели должен вести к Diffusers-папке с model_index.json.'
         # v-prediction модели (YiffyMix v4x и т.п.) требуют явного prediction_type.
