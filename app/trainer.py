@@ -93,12 +93,21 @@ def _metadata():
     if len(records)<5: raise ValueError('Для обучения добавьте минимум 5 изображений (рекомендуется 15–30).')
     (IMAGES/'metadata.jsonl').write_text('\n'.join(json.dumps(r,ensure_ascii=False) for r in records),encoding='utf-8')
 
+def _prediction_type(model: Path) -> str | None:
+    """Тип предсказания из scheduler_config.json: 'epsilon' либо 'v_prediction'."""
+    f=model/'scheduler'/'scheduler_config.json'
+    if not f.exists(): return None
+    try: return json.loads(f.read_text(encoding='utf-8')).get('prediction_type')
+    except Exception: return None
+
 def start(cfg):
     global _process
     with _lock:
         if _process and _process.poll() is None: return 'Обучение уже запущено.'
         model=Path(cfg['model_path']).expanduser()
         if not (model/'model_index.json').exists(): return 'Ошибка: путь к модели должен вести к Diffusers-папке с model_index.json.'
+        # v-prediction модели (YiffyMix v4x и т.п.) требуют явного prediction_type.
+        pred='v_prediction' if cfg.get('vpred') else _prediction_type(model)
         try: _metadata()
         except ValueError as e: return 'Ошибка: '+str(e)
         script=ROOT/'vendor/diffusers/examples/text_to_image/train_text_to_image_lora.py'
@@ -107,10 +116,11 @@ def start(cfg):
         runout=OUT/name; runout.mkdir(parents=True,exist_ok=True)
         log=LOGS/f'{name}_{datetime.now():%Y%m%d_%H%M%S}.log'
         cmd=[sys.executable, str(script), '--pretrained_model_name_or_path',str(model), '--train_data_dir',str(IMAGES), '--caption_column','text', '--resolution',str(int(cfg['resolution'])), '--train_batch_size',str(int(cfg['batch'])), '--gradient_accumulation_steps',str(int(cfg['accum'])), '--learning_rate',str(float(cfg['lr'])), '--max_train_steps',str(int(cfg['steps'])), '--rank',str(int(cfg['rank'])), '--output_dir',str(runout), '--mixed_precision','fp16', '--gradient_checkpointing', '--seed',str(int(cfg['seed'])), '--checkpointing_steps','500', '--checkpoints_total_limit','2']
+        if pred=='v_prediction': cmd+=['--prediction_type','v_prediction']
         env=os.environ.copy()
         fh=open(log,'w',encoding='utf-8',buffering=1)
         _process=subprocess.Popen(cmd,stdout=fh,stderr=subprocess.STDOUT,cwd=str(ROOT),env=env)
-        return f'Запущено (PID {_process.pid}). Лог: {log.name}'
+        return f'Запущено (PID {_process.pid}). prediction_type={pred or "epsilon (по умолчанию)"}. Лог: {log.name}'
 
 def stop():
     global _process

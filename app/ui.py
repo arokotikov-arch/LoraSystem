@@ -25,9 +25,10 @@ with gr.Blocks(title='SD 1.5 LoRA Trainer') as app:
         with gr.Row(): name=gr.Textbox(value='my_person_sd15',label='Имя LoRA'); resolution=gr.Dropdown([512],value=512,label='Разрешение')
         with gr.Row(): batch=gr.Number(value=1,precision=0,label='Batch'); accum=gr.Number(value=4,precision=0,label='Gradient accumulation'); rank=gr.Dropdown([8,16,32],value=16,label='LoRA rank')
         with gr.Row(): lr=gr.Number(value=0.0001,label='Learning rate'); steps=gr.Number(value=1400,precision=0,label='Шагов'); seed=gr.Number(value=42,precision=0,label='Seed')
+        vpred=gr.Checkbox(value=False,label='v-prediction модель (YiffyMix v4x и т.п.)')
         start=gr.Button('Начать обучение',variant='primary'); stop=gr.Button('Остановить') ; action=gr.Textbox(label='Состояние',lines=2)
         # Values are packed into the training configuration.
-        start.click(lambda m,n,r,b,a,ra,l,s,se: t.start({'model_path':m,'output_name':n,'resolution':r,'batch':b,'accum':a,'rank':ra,'lr':l,'steps':s,'seed':se}),[model,name,resolution,batch,accum,rank,lr,steps,seed],action)
+        start.click(lambda m,n,r,b,a,ra,l,s,se,v: t.start({'model_path':m,'output_name':n,'resolution':r,'batch':b,'accum':a,'rank':ra,'lr':l,'steps':s,'seed':se,'vpred':v}),[model,name,resolution,batch,accum,rank,lr,steps,seed,vpred],action)
         stop.click(t.stop,None,action)
     with gr.Tab('3. Логи'):
         log=gr.Textbox(value=t.logs(),label='Последний лог',lines=25); update=gr.Button('Обновить лог'); update.click(t.logs,None,log)
